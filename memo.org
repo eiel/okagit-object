@@ -1,0 +1,200 @@
+岡山Git勉強会 201302
+
+* タイトル
+- Git 仕組み 入門
+* 目的
+- Git Object のことをしってもらう
+- Git の仕組みをなんとなくでも理解してもらう
+* 対象者
+- 一応 Git を利用してる人
+* 内容
+** 今日の内容
+- Git の中身を知る
+  - トラブルに強い
+  - 応用力がつく
+- Git Object
+  - Git の データベース
+- この内容はこの辺を参考に自分なりに整理して喋るだけです。
+  - Pro git 9章
+    - http://git-scm.com/book/ja/Git%E3%81%AE%E5%86%85%E5%81%B4
+  - git 7 turtorial-2
+    - 日本語訳 http://cdn8.atwikiimg.com/git_jp/pub/git-manual-jp/Documentation/gittutorial-2.html
+** そもそも Git ってなんだっけ
+- 履歴がたどれる
+  - いつ変更、どうして変更したのか?
+- 変更内容がみれる
+  - どんな変更をしたんだっけ?
+- 以前の状態にもどせる
+  - やっぱり前のがよかった!
+*** Git はどのようにこれを実現したか
+- 残してる履歴ひとつひとつに保存したいの情報をすべて保存した
+  - (図を用意したい)
+  - ファイル
+  - ディレクトリ
+  - 変更を登録した日など
+- 履歴にひとつ前の履歴がどこにあるかわかるようにした(図を用意)
+  - 過去にさかのぼれる
+- あとはこれを効率よく行なえるようにしただけ
+  - 変更をすばやく検知
+  - 似てる部分は圧縮
+*** まとめ
+- Git は バージョン管理システム
+- バージョン管理システムを作るには
+  - ファイル
+    - 中身
+  - ディレクトリ
+    - 構造
+  - 履歴
+    - その瞬間の情報
+** Git Object の登場人物
+- ファイルの内容 blob
+  - ファイル内容そのもの
+- ディレクトリ構造 tree
+  - ディレクトリ内にあるファイルの一覧
+- 履歴を表現する commit
+  - ひとつ前のcommit の ID を含んでる
+  - 変更した日が保存されてる
+  - ディレクトリ構造
+** Git Object
+- 参考リポジトリ
+   - git@github.com:eiel/git-object-sample.git
+   - コミットが3つある
+   - ディレクトリがひとつ
+   - ファイルが3つ
+- Objectは
+  - .git/objects に保存されてる
+  - テキストが ZLIB で圧縮されてる
+  - 名前は内容を sha で ハッシュ したもの
+    - オブジェクトをさがすときの key になる
+  - 4種類ある(see object.c)
+    - commit
+    - tree
+    - blob
+    - tag (今回は省略)
+  - 中身は ヘッダと内容
+*** ファイル構成
+$ git clone git@github.com:eiel/git-object-sample.git
+$ cd git-object-sample
+$ tree
+.
+├── README.md
+├── doc
+│   └── commands.org
+└── object.org
+
+1 directory, 3 files
+*** .git/objects
+- .git/objects に保存されている
+$ tree .git/objects
+.git/objects/
+├── info
+└── pack
+    ├── pack-68c839f0766ad945f74b6bc1785d7b952c07996b.idx
+    └── pack-68c839f0766ad945f74b6bc1785d7b952c07996b.pack
+
+2 directories, 2 files
+*** pack は オブジェクトとまとめたもの
+  - 今回は無視
+*** コミットしてみる
+  $ echo "READMEを上書き" > README.md ; git commit -a -m 'READEMを上書きしました'
+  $ cat README.md
+  $ tree .git/objects/
+.git/objects/
+├── 04
+│   └── fb0db5f68f3e917ba90aacb09db78199bda6a7
+├── a0
+│   └── d74d48d61f95a874e30f8fb71bbd68506d0f6e
+├── fe
+│   └── ba9138249c3c6fcd9435fc38a6a29193abb76c
+├── info
+└── pack
+    ├── pack-68c839f0766ad945f74b6bc1785d7b952c07996b.idx
+    └── pack-68c839f0766ad945f74b6bc1785d7b952c07996b.pack
+
+5 directories, 5 files
+- オブジェクトが3つできました
+- ふたつはみんな同じものになるけどひとつは違うはず
+  - 04fb0db5f68f3e917ba90aacb09db78199bda6a7   <-- commit 人によって違う
+  - a0d74d48d61f95a874e30f8fb71bbd68506d0f6e   <-- blob README
+  - feba9138249c3c6fcd9435fc38a6a29193abb76c   <-- tree
+*** このファイルの中身を見てみよう
+-  zlib ライブラリで圧縮されてるので…
+  - ruby -rzlib -e 'puts Zlib.inflate(ARGF.read)' をつかえばおけ
+  $ cat .git/objects/a0/d74d48d61f95a874e30f8fb71bbd68506d0f6e | ruby -rzlib -e 'puts Zlib.inflate(ARGF.read)'
+  blob 19READMEを上書き
+- 中身は ヘッダと内容
+  - ヘッダと内容は NUL 文字が境界
+  $ cat .git/objects/a0/d74d48d61f95a874e30f8fb71bbd68506d0f6e | ruby -rzlib -e 'puts Zlib.inflate(ARGF.read)' | od -c
+0000000   b   l   o   b       1   9  \0   R   E   A   D   M   E   202
+0000020 222     ? 212   233   ?   201 215  \n
+0000033
+  - ヘッダーには オブジェクトの種類とボディサイズ
+  - 内容はタダのテキストデータ
+- sha ハッシュを計算してみよう
+  $ cat .git/objects/a0/d74d48d61f95a874e30f8fb71bbd68506d0f6e | ruby -rzlib -e 'puts Zlib.inflate(ARGF.read)' | sha1sum
+  a0d74d48d61f95a874e30f8fb71bbd68506d0f6e
+*** こんなことしなくても中身をみる方法
+  - git cat-file -t a0d74d48d61f95a874e30f8fb71bbd68506d0f6e
+    blob
+  - git cat-file -s a0d74d48d61f95a874e30f8fb71bbd68506d0f6e
+    19
+  - git cat-file -p a0d74d48d61f95a874e30f8fb71bbd68506d0f6e
+    READMEを上書き
+  - git show --raw a0d74d48d61f95a874e30f8fb71bbd68506d0f6e
+- パックされてるオブジェクトは？
+  - git rev-list --all --objects
+*** オブジェクトの詳細
+**** commit - とある履歴の内容
+    - ふたつ前のコミットを見てみよう (sha が一致するように)
+    - git cat-file -p 7dca985cea0d6e31591b46fe2610d5538dce466d
+tree 3b146a001783e7e5333f6da0560cf569c73da9b2
+parent 26d033a78bb394bb0e86f8fb27a024f1df165300
+author Tomohiko Himura <eiel.hal@gmail.com> 1361346494 +0900
+committer Tomohiko Himura <eiel.hal@gmail.com> 1361347251 +0900
+
+三番目のコミット
+    - ツリーオブジェクトの sha
+    - 親のコミットオブジェクトの sha
+    - コード書いた人 その時間
+    - コミットした人 コミットした時間
+    - コミットメッセージ
+**** tree - ようするにディレクトリの中身
+    - git cat-file -p feba9138249c3c6fcd9435fc38a6a29193abb76c
+100644 blob a0d74d48d61f95a874e30f8fb71bbd68506d0f6e    README.md
+040000 tree 7ba05afba1830003b1c68c63f95f08440ee7a355    doc
+100644 blob e2c1d9639a78a7eeb2432931f3fc78ffabf6aed9    object.org
+    - tree と blob
+    - 属性 と 種類 と sha と ファイル名
+    - 属性(mode) (see also man 2 stat  st_mode で検索するとよい)
+**** blob - ようするに ファイルの中身
+    - ファイルの内容
+*** まとめ
+- Git は バージョン管理システム
+- バージョン管理システムを作るには
+  - ファイル - blob
+  - ディレクトリ - tree
+  - 履歴 - commit
+    - ひとつ前の履歴はどこ
+    - どんな変更をしたか
+    - 誰が?いつ?
+** 以下おまけ(ただの推論とか)
+- 復元
+  - ツリーをたどって展開すればよい
+   - sha が一致しないところだけ展開すればいい
+- 差分
+   - sha が一致しないところ diff をとればいい
+- ブランチ
+  - コミットの sha を保持しとけばいい
+  - see .git/refe
+- index
+  - diff とれる
+    - object がある
+  - add すれば object が生成される
+  - add さえしてれば復元できる可能性がある
+- ファイルの移動
+  - sha が同じオブジェクトがある
+- git clone とか fetch とか
+  - 必要な object をとってくればよさそう
+- git commit --amend -m "gorogoro"
+*** まとめ
+- 土台がわかるといろんなことがわかる
